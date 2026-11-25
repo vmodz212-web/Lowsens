@@ -79,13 +79,13 @@ fun makeFeats(hz: List<String>): List<Feat> = listOf(
     Feat("font", "🔤", "Ukuran teks", "",
         opts = listOf("0.9", "1.0", "1.1", "1.2"), def = "1.0", unit = "x",
         gen = { v, _ -> listOf("settings put system font_scale $v") }, undo = listOf("settings put system font_scale 1.0")),
-    Feat("cmp", "🚀", "Percepat game ★", "Compile speed-profile", needsPkg = true,
+    Feat("cmp", "🚀", "Percepat game", "Compile speed-profile", needsPkg = true,
         gen = { _, p -> listOf("cmd package compile -m speed-profile -f $p") },
         undo = listOf("cmd package compile --reset {p}")),
-    Feat("gm", "🎯", "Game mode ★", "Prioritaskan performa", needsPkg = true,
+    Feat("gm", "🎯", "Game mode", "Prioritaskan performa", needsPkg = true,
         gen = { _, p -> listOf("cmd game mode performance $p") },
         undo = listOf("cmd game reset {p}")),
-    Feat("gpu", "🖥️", "Driver ANGLE ★", "Pakai ANGLE untuk game", needsPkg = true,
+    Feat("gpu", "🖥️", "Driver ANGLE", "Pakai ANGLE untuk game", needsPkg = true,
         gen = { _, p -> listOf("settings put global angle_gl_driver_selection_pkgs $p", "settings put global angle_gl_driver_selection_values angle") },
         undo = listOf("settings delete global angle_gl_driver_selection_pkgs", "settings delete global angle_gl_driver_selection_values")),
     Feat("ph", "👻", "Phantom process", "Batas dilepas, Android 12+",
@@ -151,6 +151,21 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
+private fun navColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = Accent, selectedTextColor = Accent, indicatorColor = TileOn,
+    unselectedIconColor = Muted, unselectedTextColor = Muted
+)
+
+@Composable
+fun Panel(content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(Tile).border(1.dp, Line, shape).padding(14.dp),
+        content = content
+    )
+}
+
+@Composable
 fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     var q by remember { mutableStateOf("") }
@@ -213,9 +228,13 @@ fun App(hz: List<String>) {
         mutableStateMapOf<String, String>().apply { feats.forEach { put(it.id, prefs.getString("p_" + it.id, "") ?: "") } }
     }
     var pick by remember { mutableStateOf(false) }
+    var tab by remember { mutableStateOf(0) }
+    var showMsg by remember { mutableStateOf(prefs.getBoolean("msg", true)) }
+    var tick by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
     fun say(m: String) { Toast.makeText(ctx, m, Toast.LENGTH_SHORT).show() }
+    fun note(m: String) { if (showMsg) say(m) }
 
     fun save() {
         val e = prefs.edit()
@@ -234,8 +253,8 @@ fun App(hz: List<String>) {
         return true
     }
 
-    fun exec(list: List<String>, done: () -> Unit = {}) {
-        if (list.isEmpty()) { done(); return }
+    fun exec(list: List<String>, okMsg: String, done: () -> Unit = {}) {
+        if (list.isEmpty()) { note(okMsg); done(); return }
         scope.launch {
             var fail = ""
             withContext(Dispatchers.IO) {
@@ -244,7 +263,7 @@ fun App(hz: List<String>) {
                     if (fail.isEmpty() && (r.startsWith("Gagal") || r.contains("Exception") || r.contains("Error"))) fail = r.take(90)
                 }
             }
-            if (fail.isNotEmpty()) say(fail)
+            if (fail.isNotEmpty()) say(fail) else note(okMsg)
             done()
         }
     }
@@ -259,111 +278,130 @@ fun App(hz: List<String>) {
         if (on && f.needsPkg && p.isEmpty()) { say("Pilih game dulu di kolom atas."); return }
         if (on) {
             sel[f.id] = true; used[f.id] = p
-            exec(f.gen(vals[f.id] ?: "", p)) { if (f.once) sel[f.id] = false; save() }
+            exec(f.gen(vals[f.id] ?: "", p), if (f.once) f.name + " dijalankan" else f.name + " diaktifkan") {
+                if (f.once) sel[f.id] = false
+                save()
+            }
         } else {
             sel[f.id] = false
-            exec(undoOf(f)) { save() }
+            exec(undoOf(f), f.name + " dimatikan") { save() }
         }
         save()
     }
 
     fun choose(f: Feat, o: String) {
         vals[f.id] = o
-        if (sel[f.id] == true && ready()) exec(f.gen(o, pkgOf(f))) { save() } else save()
+        if (sel[f.id] == true && ready()) exec(f.gen(o, pkgOf(f)), f.name + " diubah ke " + o + f.unit) { save() } else save()
     }
 
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp)) {
-        Row(Modifier.padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Ball(32.dp)
-            Spacer(Modifier.width(10.dp))
-            Text("Lowsens", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Txt)
-        }
-        OutlinedTextField(
-            value = pkg, onValueChange = { pkg = it; save() }, singleLine = true,
-            label = { Text("Nama paket game") },
-            trailingIcon = { TextButton(onClick = { pick = true }) { Text("Pilih", color = Accent, fontWeight = FontWeight.Bold) } },
-            colors = fieldColors(), modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2), modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(bottom = 16.dp)
-        ) {
-            items(feats) { f ->
-                val on = sel[f.id] == true
-                val shape = RoundedCornerShape(14.dp)
-                Column(
-                    Modifier.fillMaxWidth().height(172.dp).clip(shape)
-                        .background(if (on) TileOn else Tile)
-                        .border(if (on) 1.5.dp else 1.dp, if (on) Accent else Line, shape)
-                        .clickable { toggle(f) }
-                        .padding(12.dp)
-                ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(f.icon, fontSize = 22.sp)
-                        Spacer(Modifier.weight(1f))
-                        Box(
-                            Modifier.clip(RoundedCornerShape(6.dp))
-                                .background(if (on) Accent else Line)
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                if (on) "AKTIF" else "MATI", fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold, color = if (on) Bg else Muted
-                            )
-                        }
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (tab == 0) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                    Row(Modifier.padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Ball(32.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Lowsens", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Txt)
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(f.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Txt, maxLines = 2)
-                    if (f.opts.isEmpty()) {
-                        Text(f.desc, fontSize = 11.sp, color = Muted, maxLines = 2)
-                        if (on && f.needsPkg) {
-                            Spacer(Modifier.weight(1f))
-                            Box(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                                    .background(Accent.copy(alpha = 0.15f))
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    OutlinedTextField(
+                        value = pkg, onValueChange = { pkg = it; save() }, singleLine = true,
+                        label = { Text("Nama paket game") },
+                        trailingIcon = { TextButton(onClick = { pick = true }) { Text("Pilih", color = Accent, fontWeight = FontWeight.Bold) } },
+                        colors = fieldColors(), modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2), modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(feats) { f ->
+                            val on = sel[f.id] == true
+                            val shape = RoundedCornerShape(14.dp)
+                            Column(
+                                Modifier.fillMaxWidth().height(172.dp).clip(shape)
+                                    .background(if (on) TileOn else Tile)
+                                    .border(if (on) 1.5.dp else 1.dp, if (on) Accent else Line, shape)
+                                    .clickable { toggle(f) }
+                                    .padding(12.dp)
                             ) {
-                                Text(
-                                    "🎮 " + labelOf(ctx, pkgOf(f)), fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold, color = Accent, maxLines = 2
-                                )
-                            }
-                        }
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                        val rows = f.opts.chunked(2)
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            rows.forEach { row ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    row.forEach { o ->
-                                        val s = vals[f.id] == o
-                                        val cs = RoundedCornerShape(8.dp)
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(f.icon, fontSize = 22.sp)
+                                    Spacer(Modifier.weight(1f))
+                                    Box(
+                                        Modifier.clip(RoundedCornerShape(6.dp))
+                                            .background(if (on) Accent else Line)
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            if (on) "AKTIF" else "MATI", fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold, color = if (on) Bg else Muted
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(f.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Txt, maxLines = 2)
+                                if (f.opts.isEmpty()) {
+                                    Text(f.desc, fontSize = 11.sp, color = Muted, maxLines = 2)
+                                    if (on && f.needsPkg) {
+                                        Spacer(Modifier.weight(1f))
                                         Box(
-                                            Modifier.weight(1f).height(28.dp).clip(cs)
-                                                .background(if (s) Accent else Color.Transparent)
-                                                .border(1.dp, if (s) Accent else Line, cs)
-                                                .clickable { choose(f, o) },
-                                            contentAlignment = Alignment.Center
+                                            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                                                .background(Accent.copy(alpha = 0.15f))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp)
                                         ) {
                                             Text(
-                                                o + f.unit, fontSize = 12.sp,
-                                                fontWeight = if (s) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (s) Bg else Txt
+                                                "🎮 " + labelOf(ctx, pkgOf(f)), fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold, color = Accent, maxLines = 2
                                             )
                                         }
                                     }
-                                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                                } else {
+                                    Spacer(Modifier.weight(1f))
+                                    val rows = f.opts.chunked(2)
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        rows.forEach { row ->
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                row.forEach { o ->
+                                                    val s = vals[f.id] == o
+                                                    val cs = RoundedCornerShape(8.dp)
+                                                    Box(
+                                                        Modifier.weight(1f).height(28.dp).clip(cs)
+                                                            .background(if (s) Accent else Color.Transparent)
+                                                            .border(1.dp, if (s) Accent else Line, cs)
+                                                            .clickable { choose(f, o) },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            o + f.unit, fontSize = 12.sp,
+                                                            fontWeight = if (s) FontWeight.Bold else FontWeight.Normal,
+                                                            color = if (s) Bg else Txt
+                                                        )
+                                                    }
+                                                }
+                                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-
-    if (pick) PickDialog(onPick = { pkg = it; pick = false; save() }, onDismiss = { pick = false })
-}
+            } else {
+                val st = remember(tick) {
+                    if (!ShizukuRunner.active()) 0 else if (!ShizukuRunner.granted()) 1 else 2
+                }
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Ball(32.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Pengaturan", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Txt)
+                    }
+                    Panel {
+                        Text("Status Shizuku", fontWeight = FontWeight.SemiBold, color = Txt)
+                        Spacer(Mod
