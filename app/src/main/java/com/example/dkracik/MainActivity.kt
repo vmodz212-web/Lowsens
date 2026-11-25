@@ -1,5 +1,7 @@
 package com.example.dkracik
 
+import android.app.Activity
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,13 +27,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.*
 import rikka.shizuku.Shizuku
 
-private val Navy = Color(0xFF0E1330)
-private val CardBg = Color(0xFF1A2248)
-private val CardOn = Color(0xFF263172)
 private val Yellow = Color(0xFFFFCB05)
+private val CardBg = Color(0xFFFFE680)
+private val CardOn = Color(0xFFFFB800)
+private val Soft = Color(0xFFFFF3B0)
+private val Ink = Color(0xFF3B2A00)
+private val Muted = Color(0xFF7A5C00)
+private val Line = Color(0xFFB38600)
 private val PokeRed = Color(0xFFEE1515)
-private val Muted = Color(0xFF9FAAD8)
-private val Line = Color(0xFF39458F)
 
 val KNOWN = mapOf(
     "com.dts.freefireth" to "Free Fire",
@@ -58,20 +61,13 @@ class Feat(
     val gen: (String, String) -> List<String>, val undo: List<String> = emptyList()
 )
 
-val FEATS = listOf(
+fun makeFeats(hz: List<String>): List<Feat> = listOf(
     Feat("cache", "🧹", "Bersihkan cache", "Ketuk untuk menjalankan sekali", once = true,
         gen = { _, _ -> listOf("pm trim-caches 999G") }),
-    Feat("anim", "⚡", "Animasi cepat", "Buka tutup aplikasi lebih gesit",
-        opts = listOf("0.5", "0"), unit = "x",
-        gen = { v, _ -> listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale").map { "settings put global $it $v" } },
-        undo = listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale").map { "settings put global $it 1" }),
-    Feat("hz", "🔄", "Refresh rate", "Sesuaikan dengan layar",
-        opts = listOf("60", "90", "120", "144"), def = "120", unit = "Hz",
+    Feat("hz", "🔄", "Refresh rate", "Sesuai kemampuan layar HP Anda",
+        opts = hz, def = hz.last(), unit = "Hz",
         gen = { v, _ -> listOf("settings put system min_refresh_rate $v", "settings put system peak_refresh_rate $v") },
         undo = listOf("settings delete system min_refresh_rate", "settings delete system peak_refresh_rate")),
-    Feat("dpi", "📐", "DPI layar", "Makin kecil, layar makin luas",
-        opts = listOf("320", "360", "420", "480"), def = "420",
-        gen = { v, _ -> listOf("wm density $v") }, undo = listOf("wm density reset")),
     Feat("font", "🔤", "Ukuran teks", "1.0 adalah bawaan",
         opts = listOf("0.9", "1.0", "1.1", "1.2"), def = "1.0", unit = "x",
         gen = { v, _ -> listOf("settings put system font_scale $v") }, undo = listOf("settings put system font_scale 1.0")),
@@ -91,21 +87,31 @@ val FEATS = listOf(
         gen = { _, _ -> listOf("cmd notification set_dnd on") }, undo = listOf("cmd notification set_dnd off"))
 )
 
+@Suppress("DEPRECATION")
+fun detectHz(ctx: Context): List<String> = try {
+    val modes = (ctx as? Activity)?.windowManager?.defaultDisplay?.supportedModes
+    val l = modes?.map { Math.round(it.refreshRate) }?.distinct()?.sorted() ?: emptyList()
+    if (l.isEmpty()) listOf("60") else l.map { it.toString() }
+} catch (e: Throwable) {
+    listOf("60")
+}
+
 class MainActivity : ComponentActivity() {
     private val permListener = Shizuku.OnRequestPermissionResultListener { _, _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Shizuku.addRequestPermissionResultListener(permListener)
+        val hz = detectHz(this)
         setContent {
             MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Yellow, onPrimary = Navy, background = Navy, onBackground = Color.White,
-                    surface = Navy, onSurface = Color.White, surfaceVariant = CardBg,
+                colorScheme = lightColorScheme(
+                    primary = Ink, onPrimary = Yellow, background = Yellow, onBackground = Ink,
+                    surface = Yellow, onSurface = Ink, surfaceVariant = CardBg,
                     onSurfaceVariant = Muted, outline = Line, outlineVariant = Line
                 )
             ) {
-                Surface(Modifier.fillMaxSize(), color = Navy) { App() }
+                Surface(Modifier.fillMaxSize(), color = Yellow) { App(hz) }
             }
         }
     }
@@ -130,6 +136,13 @@ fun Ball(sz: Dp) {
 }
 
 @Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Ink, unfocusedTextColor = Ink,
+    focusedBorderColor = Ink, unfocusedBorderColor = Line,
+    focusedLabelColor = Ink, unfocusedLabelColor = Muted, cursorColor = Ink
+)
+
+@Composable
 fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var installed by remember { mutableStateOf<List<String>?>(null) }
@@ -145,9 +158,9 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val list = base.sortedWith(compareBy<String>({ !KNOWN.containsKey(it) }, { (KNOWN[it] ?: it).lowercase() }))
         .filter { q.isBlank() || it.contains(q, true) || (KNOWN[it] ?: "").contains(q, true) }
     AlertDialog(
-        onDismissRequest = onDismiss, containerColor = CardBg,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Tutup", color = Yellow) } },
-        title = { Text("Pilih game", color = Color.White) },
+        onDismissRequest = onDismiss, containerColor = Soft,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Tutup", color = Ink, fontWeight = FontWeight.Bold) } },
+        title = { Text("Pilih game", color = Ink) },
         text = {
             Column {
                 Text(
@@ -159,12 +172,12 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
                 )
                 OutlinedTextField(
                     value = q, onValueChange = { q = it }, singleLine = true,
-                    label = { Text("Cari") }, modifier = Modifier.fillMaxWidth()
+                    label = { Text("Cari") }, colors = fieldColors(), modifier = Modifier.fillMaxWidth()
                 )
                 LazyColumn(Modifier.heightIn(max = 340.dp)) {
                     items(list) { p ->
                         Column(Modifier.fillMaxWidth().clickable { onPick(p) }.padding(vertical = 8.dp)) {
-                            Text(KNOWN[p] ?: p, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text(KNOWN[p] ?: p, fontWeight = FontWeight.SemiBold, color = Ink)
                             if (KNOWN.containsKey(p)) Text(p, fontSize = 11.sp, color = Muted)
                         }
                     }
@@ -175,20 +188,26 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun App() {
+fun App(hz: List<String>) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("lowsens", 0) }
+    val feats = remember { makeFeats(hz) }
     var pkg by remember { mutableStateOf(prefs.getString("pkg", "") ?: "") }
     val sel = remember {
-        mutableStateMapOf<String, Boolean>().apply { FEATS.forEach { put(it.id, prefs.getBoolean("on_" + it.id, false)) } }
+        mutableStateMapOf<String, Boolean>().apply { feats.forEach { put(it.id, prefs.getBoolean("on_" + it.id, false)) } }
     }
     val vals = remember {
         mutableStateMapOf<String, String>().apply {
-            FEATS.forEach { if (it.opts.isNotEmpty()) put(it.id, prefs.getString("v_" + it.id, null) ?: it.def.ifEmpty { it.opts[0] }) }
+            feats.forEach {
+                if (it.opts.isNotEmpty()) {
+                    val s = prefs.getString("v_" + it.id, null)
+                    put(it.id, if (s != null && s in it.opts) s else it.def.ifEmpty { it.opts[0] })
+                }
+            }
         }
     }
     val used = remember {
-        mutableStateMapOf<String, String>().apply { FEATS.forEach { put(it.id, prefs.getString("p_" + it.id, "") ?: "") } }
+        mutableStateMapOf<String, String>().apply { feats.forEach { put(it.id, prefs.getString("p_" + it.id, "") ?: "") } }
     }
     var log by remember { mutableStateOf("") }
     var pick by remember { mutableStateOf(false) }
@@ -197,7 +216,7 @@ fun App() {
     fun save() {
         val e = prefs.edit()
         e.putString("pkg", pkg)
-        FEATS.forEach { f ->
+        feats.forEach { f ->
             e.putBoolean("on_" + f.id, sel[f.id] == true)
             e.putString("p_" + f.id, used[f.id] ?: "")
             vals[f.id]?.let { e.putString("v_" + f.id, it) }
@@ -244,55 +263,44 @@ fun App() {
         if (sel[f.id] == true && ready()) exec(f.gen(o, pkgOf(f))) { save() } else save()
     }
 
-    fun offAll() {
-        val on = FEATS.filter { sel[it.id] == true }
-        if (on.isEmpty()) { log = "Tidak ada yang aktif."; return }
-        if (!ready()) return
-        val list = on.flatMap { undoOf(it) }
-        FEATS.forEach { sel[it.id] = false }
-        exec(list) { save() }
-        save()
-    }
-
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp)) {
         Row(Modifier.padding(top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Ball(34.dp)
             Spacer(Modifier.width(10.dp))
-            Text("Lowsens", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Yellow)
+            Text("Lowsens", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
         }
         OutlinedTextField(
             value = pkg, onValueChange = { pkg = it; save() }, singleLine = true,
             label = { Text("Nama paket game") },
-            trailingIcon = { TextButton(onClick = { pick = true }) { Text("Pilih", color = Yellow, fontWeight = FontWeight.Bold) } },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Yellow, focusedLabelColor = Yellow, cursorColor = Yellow,
-                unfocusedBorderColor = Line
-            ),
-            modifier = Modifier.fillMaxWidth()
+            trailingIcon = { TextButton(onClick = { pick = true }) { Text("Pilih", color = Ink, fontWeight = FontWeight.Bold) } },
+            colors = fieldColors(), modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(10.dp))
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(FEATS) { f ->
+        LazyColumn(
+            Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 12.dp)
+        ) {
+            items(feats) { f ->
                 val on = sel[f.id] == true
                 val shape = RoundedCornerShape(18.dp)
                 Column(
                     Modifier.fillMaxWidth().clip(shape)
                         .background(if (on) CardOn else CardBg)
-                        .border(if (on) 2.dp else 1.dp, if (on) Yellow else Line, shape)
+                        .border(if (on) 2.dp else 1.dp, if (on) Ink else Line, shape)
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(f.icon, fontSize = 26.sp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(f.name, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text(f.name, fontWeight = FontWeight.SemiBold, color = Ink)
                             Text(f.desc, fontSize = 12.sp, color = Muted)
                         }
                         Switch(
                             checked = on, onCheckedChange = { toggle(f, it) },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Navy, checkedTrackColor = Yellow,
-                                uncheckedThumbColor = Muted, uncheckedTrackColor = Navy, uncheckedBorderColor = Line
+                                checkedThumbColor = Yellow, checkedTrackColor = Ink, checkedBorderColor = Ink,
+                                uncheckedThumbColor = Line, uncheckedTrackColor = Soft, uncheckedBorderColor = Line
                             )
                         )
                     }
@@ -304,15 +312,15 @@ fun App() {
                                 val cs = RoundedCornerShape(10.dp)
                                 Box(
                                     Modifier.weight(1f).height(36.dp).clip(cs)
-                                        .background(if (s) Yellow else Color.Transparent)
-                                        .border(1.dp, if (s) Yellow else Line, cs)
+                                        .background(if (s) Ink else Color.Transparent)
+                                        .border(1.dp, if (s) Ink else Line, cs)
                                         .clickable { choose(f, o) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         o + f.unit, fontSize = 13.sp,
                                         fontWeight = if (s) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (s) Navy else Color.White
+                                        color = if (s) Yellow else Ink
                                     )
                                 }
                             }
@@ -322,17 +330,12 @@ fun App() {
             }
         }
         if (log.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
             Text(
                 log, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 90.dp).verticalScroll(rememberScrollState())
             )
+            Spacer(Modifier.height(8.dp))
         }
-        Button(
-            onClick = { offAll() },
-            colors = ButtonDefaults.buttonColors(containerColor = PokeRed, contentColor = Color.White),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).height(48.dp)
-        ) { Text("Matikan semua", fontWeight = FontWeight.Bold) }
     }
 
     if (pick) PickDialog(onPick = { pkg = it; pick = false; save() }, onDismiss = { pick = false })
