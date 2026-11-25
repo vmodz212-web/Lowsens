@@ -4,7 +4,7 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="Lowsens"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@style/Theme.Lowsens">
         <activity
             android:name=".MainActivity"
             android:exported="true">
