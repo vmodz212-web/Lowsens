@@ -404,4 +404,67 @@ fun App(hz: List<String>) {
                     }
                     Panel {
                         Text("Status Shizuku", fontWeight = FontWeight.SemiBold, color = Txt)
-                        Spacer(Mod
+                                                Spacer(Modifier.height(4.dp))
+                        Text(
+                            when (st) {
+                                0 -> "Belum aktif. Buka aplikasi Shizuku dan mulai layanannya."
+                                1 -> "Aktif, tapi izin belum diberikan."
+                                else -> "Siap dipakai."
+                            },
+                            fontSize = 13.sp, color = if (st == 2) Accent else Muted
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { tick++ },
+                                border = BorderStroke(1.dp, Line),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Txt)
+                            ) { Text("Periksa lagi") }
+                            Button(
+                                onClick = { Shizuku.requestPermission(1); tick++ },
+                                enabled = st == 1,
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Bg)
+                            ) { Text("Minta izin") }
+                        }
+                    }
+                    Panel {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Pesan saat fitur diubah", fontWeight = FontWeight.SemiBold, color = Txt)
+                                Text("Contoh: Percepat game diaktifkan", fontSize = 12.sp, color = Muted)
+                            }
+                            Switch(
+                                checked = showMsg,
+                                onCheckedChange = { showMsg = it; prefs.edit().putBoolean("msg", it).apply() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Bg, checkedTrackColor = Accent,
+                                    uncheckedThumbColor = Muted, uncheckedTrackColor = Tile, uncheckedBorderColor = Line
+                                )
+                            )
+                        }
+                    }
+                    Panel {
+                        Text("Tentang", fontWeight = FontWeight.SemiBold, color = Txt)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Lowsens 1.0. Aplikasi ini hanya mengubah pengaturan sistem Android lewat Shizuku. Tidak mengubah file atau data game.",
+                            fontSize = 12.sp, color = Muted
+                        )
+                    }
+                }
+            }
+        }
+        NavigationBar(containerColor = Tile, windowInsets = WindowInsets(0.dp)) {
+            NavigationBarItem(
+                selected = tab == 0, onClick = { tab = 0 },
+                icon = { Text("🏠", fontSize = 20.sp) }, label = { Text("Home") }, colors = navColors()
+            )
+            NavigationBarItem(
+                selected = tab == 1, onClick = { tab = 1 },
+                icon = { Text("⚙️", fontSize = 20.sp) }, label = { Text("Pengaturan") }, colors = navColors()
+            )
+        }
+    }
+
+    if (pick) PickDialog(onPick = { pkg = it; pick = false; save() }, onDismiss = { pick = false })
+}
