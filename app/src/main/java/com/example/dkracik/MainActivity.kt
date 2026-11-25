@@ -2,6 +2,7 @@ package com.example.dkracik
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -39,23 +40,27 @@ private val Muted = Color(0xFF8A97A8)
 private val Txt = Color(0xFFE8EEF5)
 private val PokeRed = Color(0xFFEE1515)
 
-val KNOWN = mapOf(
-    "com.dts.freefireth" to "Free Fire",
-    "com.dts.freefiremax" to "Free Fire MAX",
-    "com.tencent.ig" to "PUBG Mobile",
-    "com.pubg.imobile" to "BGMI",
-    "com.pubg.krmobile" to "PUBG Mobile KR",
-    "com.mobile.legends" to "Mobile Legends",
-    "com.miHoYo.GenshinImpact" to "Genshin Impact",
-    "com.HoYoverse.hkrpgoversea" to "Honkai Star Rail",
-    "com.activision.callofduty.shooter" to "Call of Duty Mobile",
-    "com.mojang.minecraftpe" to "Minecraft",
-    "com.roblox.client" to "Roblox",
-    "com.riotgames.league.wildrift" to "Wild Rift",
-    "com.supercell.clashofclans" to "Clash of Clans",
-    "com.supercell.brawlstars" to "Brawl Stars",
-    "jp.konami.pesam" to "eFootball"
-)
+class AppItem(val pkg: String, val label: String, val game: Boolean)
+
+@Suppress("DEPRECATION")
+fun loadApps(ctx: Context): List<AppItem> = try {
+    val pm = ctx.packageManager
+    pm.getInstalledApplications(0)
+        .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 && it.packageName != ctx.packageName }
+        .map { a ->
+            val g = a.category == ApplicationInfo.CATEGORY_GAME || (a.flags and ApplicationInfo.FLAG_IS_GAME) != 0
+            AppItem(a.packageName, a.loadLabel(pm).toString(), g)
+        }
+} catch (e: Throwable) {
+    emptyList()
+}
+
+fun labelOf(ctx: Context, pkg: String): String = try {
+    val pm = ctx.packageManager
+    pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
+} catch (e: Throwable) {
+    pkg
+}
 
 class Feat(
     val id: String, val icon: String, val name: String, val desc: String,
@@ -86,8 +91,8 @@ fun makeFeats(hz: List<String>): List<Feat> = listOf(
     Feat("ph", "👻", "Phantom process", "Batas dilepas, Android 12+",
         gen = { _, _ -> listOf("device_config set_sync_disabled_for_tests persistent", "device_config put activity_manager max_phantom_processes 2147483647", "settings put global settings_enable_monitor_phantom_procs false") },
         undo = listOf("device_config delete activity_manager max_phantom_processes", "settings put global settings_enable_monitor_phantom_procs true", "device_config set_sync_disabled_for_tests none")),
-    Feat("dnd", "🔕", "Jangan ganggu", "Nyalakan DND saat main",
-        gen = { _, _ -> listOf("cmd notification set_dnd on") }, undo = listOf("cmd notification set_dnd off"))
+    Feat("dnd", "🔕", "Jangan ganggu", "Mode prioritas, volume tetap bisa diubah",
+        gen = { _, _ -> listOf("cmd notification set_dnd priority") }, undo = listOf("cmd notification set_dnd off"))
 )
 
 @Suppress("DEPRECATION")
@@ -147,19 +152,14 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
 
 @Composable
 fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
     var q by remember { mutableStateOf("") }
-    var installed by remember { mutableStateOf<List<String>?>(null) }
-    LaunchedEffect(Unit) {
-        installed = withContext(Dispatchers.IO) {
-            if (ShizukuRunner.active() && ShizukuRunner.granted())
-                ShizukuRunner.run("pm list packages -3").lines()
-                    .filter { it.startsWith("package:") }.map { it.removePrefix("package:").trim() }
-            else emptyList()
-        }
-    }
-    val base = installed?.takeIf { it.isNotEmpty() } ?: KNOWN.keys.toList()
-    val list = base.sortedWith(compareBy<String>({ !KNOWN.containsKey(it) }, { (KNOWN[it] ?: it).lowercase() }))
-        .filter { q.isBlank() || it.contains(q, true) || (KNOWN[it] ?: "").contains(q, true) }
+    var apps by remember { mutableStateOf<List<AppItem>?>(null) }
+    LaunchedEffect(Unit) { apps = withContext(Dispatchers.IO) { loadApps(ctx) } }
+    val all = apps
+    val list = (all ?: emptyList())
+        .sortedWith(compareBy<AppItem>({ !it.game }, { it.label.lowercase() }))
+        .filter { q.isBlank() || it.label.contains(q, true) || it.pkg.contains(q, true) }
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = Tile,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Tutup", color = Accent, fontWeight = FontWeight.Bold) } },
@@ -168,9 +168,9 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
             Column {
                 Text(
                     when {
-                        installed == null -> "Memuat..."
-                        installed.isNullOrEmpty() -> "Daftar game umum (aktifkan Shizuku untuk melihat aplikasi terpasang)"
-                        else -> "Aplikasi terpasang di HP"
+                        all == null -> "Memuat..."
+                        all.isEmpty() -> "Daftar aplikasi tidak terbaca. Ketik nama paket secara manual."
+                        else -> "Aplikasi terpasang di HP (game di paling atas)"
                     }, fontSize = 12.sp, color = Muted
                 )
                 OutlinedTextField(
@@ -178,10 +178,10 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
                     label = { Text("Cari") }, colors = fieldColors(), modifier = Modifier.fillMaxWidth()
                 )
                 LazyColumn(Modifier.heightIn(max = 340.dp)) {
-                    items(list) { p ->
-                        Column(Modifier.fillMaxWidth().clickable { onPick(p) }.padding(vertical = 8.dp)) {
-                            Text(KNOWN[p] ?: p, fontWeight = FontWeight.SemiBold, color = Txt)
-                            if (KNOWN.containsKey(p)) Text(p, fontSize = 11.sp, color = Muted)
+                    items(list) { a ->
+                        Column(Modifier.fillMaxWidth().clickable { onPick(a.pkg) }.padding(vertical = 8.dp)) {
+                            Text(a.label + if (a.game) "  🎮" else "", fontWeight = FontWeight.SemiBold, color = Txt)
+                            Text(a.pkg, fontSize = 11.sp, color = Muted)
                         }
                     }
                 }
@@ -318,10 +318,23 @@ fun App(hz: List<String>) {
                     Spacer(Modifier.height(8.dp))
                     Text(f.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Txt, maxLines = 2)
                     if (f.opts.isEmpty()) {
-                        Text(f.desc, fontSize = 11.sp, color = Muted, maxLines = 3)
+                        Text(f.desc, fontSize = 11.sp, color = Muted, maxLines = 2)
+                        if (on && f.needsPkg) {
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                                    .background(Accent.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    "🎮 " + labelOf(ctx, pkgOf(f)), fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold, color = Accent, maxLines = 2
+                                )
+                            }
+                        }
                     } else {
                         Spacer(Modifier.weight(1f))
-                        val rows = f.opts.chunked(if (f.opts.size > 2) 2 else f.opts.size)
+                        val rows = f.opts.chunked(2)
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             rows.forEach { row ->
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -342,7 +355,7 @@ fun App(hz: List<String>) {
                                             )
                                         }
                                     }
-                                    repeat(2 - row.size) { if (row.size < 2 && f.opts.size > 2) Spacer(Modifier.weight(1f)) }
+                                    if (row.size == 1) Spacer(Modifier.weight(1f))
                                 }
                             }
                         }
