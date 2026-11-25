@@ -1,12 +1,17 @@
 package com.example.dkracik
+
 import android.app.Activity
 import android.content.Context
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -18,7 +23,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -26,13 +30,13 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.*
 import rikka.shizuku.Shizuku
 
-private val Yellow = Color(0xFFFFCB05)
-private val CardBg = Color(0xFFFFE680)
-private val CardOn = Color(0xFFFFB800)
-private val Soft = Color(0xFFFFF3B0)
-private val Ink = Color(0xFF3B2A00)
-private val Muted = Color(0xFF7A5C00)
-private val Line = Color(0xFFB38600)
+private val Bg = Color(0xFF0B0F14)
+private val Tile = Color(0xFF151B24)
+private val TileOn = Color(0xFF0E2B2E)
+private val Accent = Color(0xFF2DD4BF)
+private val Line = Color(0xFF263040)
+private val Muted = Color(0xFF8A97A8)
+private val Txt = Color(0xFFE8EEF5)
 private val PokeRed = Color(0xFFEE1515)
 
 val KNOWN = mapOf(
@@ -63,23 +67,23 @@ class Feat(
 fun makeFeats(hz: List<String>): List<Feat> = listOf(
     Feat("cache", "🧹", "Bersihkan cache", "Ketuk untuk menjalankan sekali", once = true,
         gen = { _, _ -> listOf("pm trim-caches 999G") }),
-    Feat("hz", "🔄", "Refresh rate", "Sesuai kemampuan layar HP Anda",
+    Feat("hz", "🔄", "Refresh rate", "",
         opts = hz, def = hz.last(), unit = "Hz",
-        gen = { v, _ -> listOf("settings put system min_refresh_rate $v", "settings put system peak_refresh_rate $v") },
+        gen = { v, _ -> listOf("settings put system min_refresh_rate $v.0", "settings put system peak_refresh_rate $v.0") },
         undo = listOf("settings delete system min_refresh_rate", "settings delete system peak_refresh_rate")),
-    Feat("font", "🔤", "Ukuran teks", "1.0 adalah bawaan",
+    Feat("font", "🔤", "Ukuran teks", "",
         opts = listOf("0.9", "1.0", "1.1", "1.2"), def = "1.0", unit = "x",
         gen = { v, _ -> listOf("settings put system font_scale $v") }, undo = listOf("settings put system font_scale 1.0")),
     Feat("cmp", "🚀", "Percepat game ★", "Compile speed-profile", needsPkg = true,
         gen = { _, p -> listOf("cmd package compile -m speed-profile -f $p") },
         undo = listOf("cmd package compile --reset {p}")),
-    Feat("gm", "🎯", "Game mode performa ★", "Prioritaskan performa game", needsPkg = true,
+    Feat("gm", "🎯", "Game mode ★", "Prioritaskan performa", needsPkg = true,
         gen = { _, p -> listOf("cmd game mode performance $p") },
         undo = listOf("cmd game reset {p}")),
     Feat("gpu", "🖥️", "Driver ANGLE ★", "Pakai ANGLE untuk game", needsPkg = true,
         gen = { _, p -> listOf("settings put global angle_gl_driver_selection_pkgs $p", "settings put global angle_gl_driver_selection_values angle") },
         undo = listOf("settings delete global angle_gl_driver_selection_pkgs", "settings delete global angle_gl_driver_selection_values")),
-    Feat("ph", "👻", "Batas phantom process", "Dilepas, Android 12 ke atas",
+    Feat("ph", "👻", "Phantom process", "Batas dilepas, Android 12+",
         gen = { _, _ -> listOf("device_config set_sync_disabled_for_tests persistent", "device_config put activity_manager max_phantom_processes 2147483647", "settings put global settings_enable_monitor_phantom_procs false") },
         undo = listOf("device_config delete activity_manager max_phantom_processes", "settings put global settings_enable_monitor_phantom_procs true", "device_config set_sync_disabled_for_tests none")),
     Feat("dnd", "🔕", "Jangan ganggu", "Nyalakan DND saat main",
@@ -104,13 +108,13 @@ class MainActivity : ComponentActivity() {
         val hz = detectHz(this)
         setContent {
             MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = Ink, onPrimary = Yellow, background = Yellow, onBackground = Ink,
-                    surface = Yellow, onSurface = Ink, surfaceVariant = CardBg,
+                colorScheme = darkColorScheme(
+                    primary = Accent, onPrimary = Bg, background = Bg, onBackground = Txt,
+                    surface = Bg, onSurface = Txt, surfaceVariant = Tile,
                     onSurfaceVariant = Muted, outline = Line, outlineVariant = Line
                 )
             ) {
-                Surface(Modifier.fillMaxSize(), color = Yellow) { App(hz) }
+                Surface(Modifier.fillMaxSize(), color = Bg) { App(hz) }
             }
         }
     }
@@ -136,9 +140,9 @@ fun Ball(sz: Dp) {
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Ink, unfocusedTextColor = Ink,
-    focusedBorderColor = Ink, unfocusedBorderColor = Line,
-    focusedLabelColor = Ink, unfocusedLabelColor = Muted, cursorColor = Ink
+    focusedTextColor = Txt, unfocusedTextColor = Txt,
+    focusedBorderColor = Accent, unfocusedBorderColor = Line,
+    focusedLabelColor = Accent, unfocusedLabelColor = Muted, cursorColor = Accent
 )
 
 @Composable
@@ -157,9 +161,9 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val list = base.sortedWith(compareBy<String>({ !KNOWN.containsKey(it) }, { (KNOWN[it] ?: it).lowercase() }))
         .filter { q.isBlank() || it.contains(q, true) || (KNOWN[it] ?: "").contains(q, true) }
     AlertDialog(
-        onDismissRequest = onDismiss, containerColor = Soft,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Tutup", color = Ink, fontWeight = FontWeight.Bold) } },
-        title = { Text("Pilih game", color = Ink) },
+        onDismissRequest = onDismiss, containerColor = Tile,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Tutup", color = Accent, fontWeight = FontWeight.Bold) } },
+        title = { Text("Pilih game", color = Txt) },
         text = {
             Column {
                 Text(
@@ -176,7 +180,7 @@ fun PickDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
                 LazyColumn(Modifier.heightIn(max = 340.dp)) {
                     items(list) { p ->
                         Column(Modifier.fillMaxWidth().clickable { onPick(p) }.padding(vertical = 8.dp)) {
-                            Text(KNOWN[p] ?: p, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text(KNOWN[p] ?: p, fontWeight = FontWeight.SemiBold, color = Txt)
                             if (KNOWN.containsKey(p)) Text(p, fontSize = 11.sp, color = Muted)
                         }
                     }
@@ -208,9 +212,10 @@ fun App(hz: List<String>) {
     val used = remember {
         mutableStateMapOf<String, String>().apply { feats.forEach { put(it.id, prefs.getString("p_" + it.id, "") ?: "") } }
     }
-    var log by remember { mutableStateOf("") }
     var pick by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    fun say(m: String) { Toast.makeText(ctx, m, Toast.LENGTH_SHORT).show() }
 
     fun save() {
         val e = prefs.edit()
@@ -224,29 +229,34 @@ fun App(hz: List<String>) {
     }
 
     fun ready(): Boolean {
-        if (!ShizukuRunner.active()) { log = "Shizuku belum aktif. Buka aplikasi Shizuku dan mulai layanannya."; return false }
-        if (!ShizukuRunner.granted()) { Shizuku.requestPermission(1); log = "Izinkan akses Shizuku, lalu ketuk lagi."; return false }
+        if (!ShizukuRunner.active()) { say("Shizuku belum aktif. Buka aplikasi Shizuku dan mulai layanannya."); return false }
+        if (!ShizukuRunner.granted()) { Shizuku.requestPermission(1); say("Izinkan akses Shizuku, lalu ketuk lagi."); return false }
         return true
     }
 
     fun exec(list: List<String>, done: () -> Unit = {}) {
         if (list.isEmpty()) { done(); return }
         scope.launch {
-            val sb = StringBuilder()
+            var fail = ""
             withContext(Dispatchers.IO) {
-                list.forEach { c -> sb.append("> ").append(c).append("\n").append(ShizukuRunner.run(c)).append("\n") }
+                list.forEach { c ->
+                    val r = ShizukuRunner.run(c)
+                    if (fail.isEmpty() && (r.startsWith("Gagal") || r.contains("Exception") || r.contains("Error"))) fail = r.take(90)
+                }
             }
-            log = sb.toString(); done()
+            if (fail.isNotEmpty()) say(fail)
+            done()
         }
     }
 
     fun pkgOf(f: Feat): String = (used[f.id] ?: "").ifEmpty { pkg.trim() }
     fun undoOf(f: Feat): List<String> = f.undo.map { it.replace("{p}", pkgOf(f).ifEmpty { "NAMA.PAKET" }) }
 
-    fun toggle(f: Feat, on: Boolean) {
+    fun toggle(f: Feat) {
+        val on = sel[f.id] != true
         if (!ready()) return
         val p = pkg.trim()
-        if (on && f.needsPkg && p.isEmpty()) { log = "Pilih game dulu di kolom atas."; return }
+        if (on && f.needsPkg && p.isEmpty()) { say("Pilih game dulu di kolom atas."); return }
         if (on) {
             sel[f.id] = true; used[f.id] = p
             exec(f.gen(vals[f.id] ?: "", p)) { if (f.once) sel[f.id] = false; save() }
@@ -263,77 +273,82 @@ fun App(hz: List<String>) {
     }
 
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp)) {
-        Row(Modifier.padding(top = 12.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Ball(34.dp)
+        Row(Modifier.padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Ball(32.dp)
             Spacer(Modifier.width(10.dp))
-            Text("Lowsens", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+            Text("Lowsens", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Txt)
         }
         OutlinedTextField(
             value = pkg, onValueChange = { pkg = it; save() }, singleLine = true,
             label = { Text("Nama paket game") },
-            trailingIcon = { TextButton(onClick = { pick = true }) { Text("Pilih", color = Ink, fontWeight = FontWeight.Bold) } },
+            trailingIcon = { TextButton(onClick = { pick = true }) { Text("Pilih", color = Accent, fontWeight = FontWeight.Bold) } },
             colors = fieldColors(), modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(
-            Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(bottom = 12.dp)
+        Spacer(Modifier.height(12.dp))
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2), modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
             items(feats) { f ->
                 val on = sel[f.id] == true
-                val shape = RoundedCornerShape(18.dp)
+                val shape = RoundedCornerShape(14.dp)
                 Column(
-                    Modifier.fillMaxWidth().clip(shape)
-                        .background(if (on) CardOn else CardBg)
-                        .border(if (on) 2.dp else 1.dp, if (on) Ink else Line, shape)
-                        .padding(14.dp)
+                    Modifier.fillMaxWidth().height(172.dp).clip(shape)
+                        .background(if (on) TileOn else Tile)
+                        .border(if (on) 1.5.dp else 1.dp, if (on) Accent else Line, shape)
+                        .clickable { toggle(f) }
+                        .padding(12.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(f.icon, fontSize = 26.sp)
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(f.name, fontWeight = FontWeight.SemiBold, color = Ink)
-                            Text(f.desc, fontSize = 12.sp, color = Muted)
-                        }
-                        Switch(
-                            checked = on, onCheckedChange = { toggle(f, it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Yellow, checkedTrackColor = Ink, checkedBorderColor = Ink,
-                                uncheckedThumbColor = Line, uncheckedTrackColor = Soft, uncheckedBorderColor = Line
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(f.icon, fontSize = 22.sp)
+                        Spacer(Modifier.weight(1f))
+                        Box(
+                            Modifier.clip(RoundedCornerShape(6.dp))
+                                .background(if (on) Accent else Line)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                if (on) "AKTIF" else "MATI", fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold, color = if (on) Bg else Muted
                             )
-                        )
+                        }
                     }
-                    if (f.opts.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            f.opts.forEach { o ->
-                                val s = vals[f.id] == o
-                                val cs = RoundedCornerShape(10.dp)
-                                Box(
-                                    Modifier.weight(1f).height(36.dp).clip(cs)
-                                        .background(if (s) Ink else Color.Transparent)
-                                        .border(1.dp, if (s) Ink else Line, cs)
-                                        .clickable { choose(f, o) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        o + f.unit, fontSize = 13.sp,
-                                        fontWeight = if (s) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (s) Yellow else Ink
-                                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(f.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Txt, maxLines = 2)
+                    if (f.opts.isEmpty()) {
+                        Text(f.desc, fontSize = 11.sp, color = Muted, maxLines = 3)
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                        val rows = f.opts.chunked(if (f.opts.size > 2) 2 else f.opts.size)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            rows.forEach { row ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    row.forEach { o ->
+                                        val s = vals[f.id] == o
+                                        val cs = RoundedCornerShape(8.dp)
+                                        Box(
+                                            Modifier.weight(1f).height(28.dp).clip(cs)
+                                                .background(if (s) Accent else Color.Transparent)
+                                                .border(1.dp, if (s) Accent else Line, cs)
+                                                .clickable { choose(f, o) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                o + f.unit, fontSize = 12.sp,
+                                                fontWeight = if (s) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (s) Bg else Txt
+                                            )
+                                        }
+                                    }
+                                    repeat(2 - row.size) { if (row.size < 2 && f.opts.size > 2) Spacer(Modifier.weight(1f)) }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-        if (log.isNotEmpty()) {
-            Text(
-                log, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Muted,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 90.dp).verticalScroll(rememberScrollState())
-            )
-            Spacer(Modifier.height(8.dp))
         }
     }
 
