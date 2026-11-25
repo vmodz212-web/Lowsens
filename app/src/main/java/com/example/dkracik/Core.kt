@@ -134,6 +134,7 @@ class Ctl(val ctx: Context, val scope: CoroutineScope, hz: List<String>) {
         prefs.edit().putString("scale_$p", s).apply()
     }
 
+    @JvmName("updatePkg")
     fun setPkg(p: String) { pkg = p; save() }
 
     fun setMsg(v: Boolean) { showMsg = v; prefs.edit().putBoolean("msg", v).apply() }
