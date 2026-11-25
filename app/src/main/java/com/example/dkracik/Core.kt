@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
+import android.util.DisplayMetrics
 import android.widget.Toast
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.ImageBitmap
@@ -54,6 +55,33 @@ fun detectHz(ctx: Context): List<String> = try {
     listOf("60")
 }
 
+@Suppress("DEPRECATION")
+fun nativeInfo(ctx: Context): IntArray {
+    val p = ctx.getSharedPreferences("lowsens", 0)
+    var w = p.getInt("nat_w", 0)
+    var h = p.getInt("nat_h", 0)
+    var d = p.getInt("nat_d", 0)
+    if (w <= 0 || h <= 0 || d <= 0) {
+        try {
+            val dm = DisplayMetrics()
+            (ctx as? Activity)?.windowManager?.defaultDisplay?.getRealMetrics(dm)
+            if (dm.widthPixels > 0 && dm.heightPixels > 0 && dm.densityDpi > 0) {
+                w = minOf(dm.widthPixels, dm.heightPixels)
+                h = maxOf(dm.widthPixels, dm.heightPixels)
+                d = dm.densityDpi
+                p.edit().putInt("nat_w", w).putInt("nat_h", h).putInt("nat_d", d).apply()
+            }
+        } catch (e: Throwable) {
+        }
+    }
+    if (w <= 0 || h <= 0 || d <= 0) {
+        w = 1080
+        h = 2400
+        d = 420
+    }
+    return intArrayOf(w, h, d)
+}
+
 class Feat(
     val id: String, val tab: Int, val icon: String, val name: String, val desc: String,
     val opts: List<String> = emptyList(), val def: String = "", val unit: String = "",
@@ -61,35 +89,52 @@ class Feat(
     val gen: (String, String) -> List<String>, val undo: List<String> = emptyList()
 )
 
-fun makeFeats(hz: List<String>): List<Feat> = listOf(
-    Feat("hz", 1, "🔄", "Refresh rate", "", opts = hz, def = hz.last(), unit = "Hz",
-        gen = { v, _ -> listOf("settings put system min_refresh_rate $v.0", "settings put system peak_refresh_rate $v.0") },
-        undo = listOf("settings delete system min_refresh_rate", "settings delete system peak_refresh_rate")),
-    Feat("font", 1, "🔤", "Ukuran teks", "", opts = listOf("0.9", "1.0", "1.1", "1.2"), def = "1.0", unit = "x",
-        gen = { v, _ -> listOf("settings put system font_scale $v") },
-        undo = listOf("settings put system font_scale 1.0")),
-    Feat("cache", 2, "🧹", "Bersihkan cache", "Ketuk untuk menjalankan sekali", once = true,
-        gen = { _, _ -> listOf("pm trim-caches 999G") }),
-    Feat("ph", 2, "👻", "Phantom process", "Batas dilepas, Android 12+",
-        gen = { _, _ -> listOf("device_config set_sync_disabled_for_tests persistent", "device_config put activity_manager max_phantom_processes 2147483647", "settings put global settings_enable_monitor_phantom_procs false") },
-        undo = listOf("device_config delete activity_manager max_phantom_processes", "settings put global settings_enable_monitor_phantom_procs true", "device_config set_sync_disabled_for_tests none")),
-    Feat("dnd", 2, "🔕", "Jangan ganggu", "Mode prioritas, volume tetap bisa diubah",
-        gen = { _, _ -> listOf("cmd notification set_dnd priority") },
-        undo = listOf("cmd notification set_dnd off")),
-    Feat("cmp", 3, "🚀", "Percepat game", "Compile speed-profile", needsPkg = true,
-        gen = { _, p -> listOf("cmd package compile -m speed-profile -f $p") },
-        undo = listOf("cmd package compile --reset {p}")),
-    Feat("gm", 3, "🎯", "Game mode", "Prioritaskan performa", needsPkg = true,
-        gen = { _, p -> listOf("cmd game mode performance $p") },
-        undo = listOf("cmd game reset {p}")),
-    Feat("gpu", 3, "🖥️", "Driver ANGLE", "Pakai ANGLE untuk game", needsPkg = true,
-        gen = { _, p -> listOf("settings put global angle_gl_driver_selection_pkgs $p", "settings put global angle_gl_driver_selection_values angle") },
-        undo = listOf("settings delete global angle_gl_driver_selection_pkgs", "settings delete global angle_gl_driver_selection_values"))
-)
+fun makeFeats(hz: List<String>, nat: IntArray): List<Feat> {
+    val w = nat[0]
+    val h = nat[1]
+    val d = nat[2]
+    val dpiOpts = listOf(0.8, 0.9, 1.0, 1.1).map { Math.round(d * it).toString() }
+    return listOf(
+        Feat("hz", 1, "🔄", "Refresh rate", "", opts = hz, def = hz.last(), unit = "Hz",
+            gen = { v, _ -> listOf("settings put system min_refresh_rate $v.0", "settings put system peak_refresh_rate $v.0") },
+            undo = listOf("settings delete system min_refresh_rate", "settings delete system peak_refresh_rate")),
+        Feat("font", 1, "🔤", "Ukuran teks", "", opts = listOf("0.9", "1.0", "1.1", "1.2"), def = "1.0", unit = "x",
+            gen = { v, _ -> listOf("settings put system font_scale $v") },
+            undo = listOf("settings put system font_scale 1.0")),
+        Feat("dpi", 1, "📐", "DPI layar", "", opts = dpiOpts, def = d.toString(),
+            gen = { v, _ -> listOf("wm density $v") },
+            undo = listOf("wm density reset")),
+        Feat("res", 1, "🖼️", "Resolusi layar", "", opts = listOf("100", "90", "80", "70"), def = "100", unit = "%",
+            gen = { v, _ ->
+                val k = v.toIntOrNull() ?: 100
+                val rw = (w * k / 100 / 2) * 2
+                val rh = (h * k / 100 / 2) * 2
+                listOf("wm size ${rw}x${rh}")
+            },
+            undo = listOf("wm size reset")),
+        Feat("cache", 2, "🧹", "Bersihkan cache", "Ketuk untuk menjalankan sekali", once = true,
+            gen = { _, _ -> listOf("pm trim-caches 999G") }),
+        Feat("ph", 2, "👻", "Phantom process", "Batas dilepas, Android 12+",
+            gen = { _, _ -> listOf("device_config set_sync_disabled_for_tests persistent", "device_config put activity_manager max_phantom_processes 2147483647", "settings put global settings_enable_monitor_phantom_procs false") },
+            undo = listOf("device_config delete activity_manager max_phantom_processes", "settings put global settings_enable_monitor_phantom_procs true", "device_config set_sync_disabled_for_tests none")),
+        Feat("dnd", 2, "🔕", "Jangan ganggu", "Mode prioritas, volume tetap bisa diubah",
+            gen = { _, _ -> listOf("cmd notification set_dnd priority") },
+            undo = listOf("cmd notification set_dnd off")),
+        Feat("cmp", 3, "🚀", "Percepat game", "Compile speed-profile", needsPkg = true,
+            gen = { _, p -> listOf("cmd package compile -m speed-profile -f $p") },
+            undo = listOf("cmd package compile --reset {p}")),
+        Feat("gm", 3, "🎯", "Game mode", "Prioritaskan performa", needsPkg = true,
+            gen = { _, p -> listOf("cmd game mode performance $p") },
+            undo = listOf("cmd game reset {p}")),
+        Feat("gpu", 3, "🖥️", "Driver ANGLE", "Pakai ANGLE untuk game", needsPkg = true,
+            gen = { _, p -> listOf("settings put global angle_gl_driver_selection_pkgs $p", "settings put global angle_gl_driver_selection_values angle") },
+            undo = listOf("settings delete global angle_gl_driver_selection_pkgs", "settings delete global angle_gl_driver_selection_values"))
+    )
+}
 
-class Ctl(val ctx: Context, val scope: CoroutineScope, hz: List<String>) {
+class Ctl(val ctx: Context, val scope: CoroutineScope, hz: List<String>, nat: IntArray) {
     private val prefs = ctx.getSharedPreferences("lowsens", 0)
-    val feats = makeFeats(hz)
+    val feats = makeFeats(hz, nat)
     var pkg by mutableStateOf(prefs.getString("pkg", "") ?: "")
     var showMsg by mutableStateOf(prefs.getBoolean("msg", true))
     var mode by mutableStateOf(prefs.getString("mode", "performance") ?: "performance")
@@ -115,16 +160,19 @@ class Ctl(val ctx: Context, val scope: CoroutineScope, hz: List<String>) {
         scope.launch { apps = withContext(Dispatchers.IO) { loadApps(ctx) } }
     }
 
-    fun games(): List<AppItem> {
-        val all = apps ?: return emptyList()
-        return all.filter { it.game || it.pkg in added }.sortedBy { it.label.lowercase() }
-    }
+    fun games(): List<AppItem> =
+        added.map { p -> AppItem(p, labelOf(ctx, p), true) }.sortedBy { it.label.lowercase() }
 
     fun addGame(p: String) {
         if (p !in added) {
             added.add(p)
             prefs.edit().putStringSet("added", added.toSet()).apply()
         }
+    }
+
+    fun removeGame(p: String) {
+        added.remove(p)
+        prefs.edit().putStringSet("added", added.toSet()).apply()
     }
 
     fun scaleOf(p: String): String = scales[p] ?: prefs.getString("scale_$p", "1.0") ?: "1.0"
