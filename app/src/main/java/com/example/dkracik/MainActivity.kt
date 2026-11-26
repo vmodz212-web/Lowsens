@@ -2,7 +2,9 @@ package com.example.dkracik
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,8 +26,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         Shizuku.addRequestPermissionResultListener(permListener)
         val hz = detectHz(this)
+        val nat = nativeInfo(this)
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -34,7 +41,7 @@ class MainActivity : ComponentActivity() {
                     onSurfaceVariant = Muted, outline = Line, outlineVariant = Line
                 )
             ) {
-                Surface(Modifier.fillMaxSize(), color = Bg) { App(hz) }
+                Surface(Modifier.fillMaxSize(), color = Bg) { App(hz, nat) }
             }
         }
     }
@@ -63,13 +70,13 @@ fun ResultBar(ctl: Ctl) {
 }
 
 @Composable
-fun App(hz: List<String>) {
+fun App(hz: List<String>, nat: IntArray) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val ctl = remember { Ctl(ctx, scope, hz) }
+    val ctl = remember { Ctl(ctx, scope, hz, nat) }
     var tab by remember { mutableStateOf(0) }
     val tabs = listOf("🏠" to "Beranda", "📱" to "Layar", "⚡" to "Performa", "🎮" to "Game", "⚙️" to "Setelan")
-    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
         ResultBar(ctl)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
@@ -78,7 +85,7 @@ fun App(hz: List<String>) {
                 else -> SettingsTab(ctl)
             }
         }
-        NavigationBar(containerColor = CardBg, windowInsets = WindowInsets(0, 0, 0, 0)) {
+        NavigationBar(containerColor = CardBg) {
             tabs.forEachIndexed { i, t ->
                 NavigationBarItem(
                     selected = tab == i, onClick = { tab = i },
